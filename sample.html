@@ -31,14 +31,13 @@
     <div id="fileInfo"></div>
   </div>
 
-  <div class="card">
-    <h2>② 生成并下载文件（走系统下载能力）</h2>
-    <button id="txt">下载 TXT</button>
-    <button id="csv">下载 CSV</button>
-    <button id="html">下载 HTML</button>
-    <button id="blob">下载 Blob（二进制）</button>
-    <button id="dataurl">下载 DataURL</button>
-  </div>
+  <button id="txt">下载 TXT（保存API）</button>
+  <button id="csv">下载 CSV（预设名 + a[download]）</button>
+  <button id="blob">下载 Blob（预设名）</button>
+  <button id="dataurl">下载 DataURL（预设名）</button>
+  <button id="remote">下载远程文件（AndroidBridge.download）</button>
+  <button id="base64">保存 Base64（AndroidBridge.saveBase64）</button>
+</div>
 
   <div class="card">
     <h2>③ 内部链接浏览</h2>
