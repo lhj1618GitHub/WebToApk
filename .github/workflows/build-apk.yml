@@ -3,12 +3,12 @@ name: Build APK
 on:
   workflow_dispatch:
     inputs:
-      html_file:
-        description: '主页 HTML 文件路径（相对仓库根目录）'
+      build_target:
+        description: '主页来源：HTML 文件路径（如 index.html）或 http(s) URL'
         required: true
         default: 'index.html'
       assets_dir:
-        description: '可选：额外静态资源目录（内容合并到 assets 根目录）'
+        description: '可选：额外静态资源目录（仅文件模式生效）'
         required: false
         default: ''
       app_name:
@@ -39,7 +39,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HTML_FILE:        ${{ inputs.html_file }}
+      BUILD_TARGET:     ${{ inputs.build_target }}
       EXTRA_ASSETS_DIR: ${{ inputs.assets_dir }}
       APP_NAME:         ${{ inputs.app_name }}
       PACKAGE_NAME:     ${{ inputs.package_name }}
