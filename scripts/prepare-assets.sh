@@ -5,32 +5,40 @@ ROOT="${GITHUB_WORKSPACE:-$(pwd)}"
 ASSETS_DIR="$ROOT/android/app/src/main/assets"
 RES_DRAWABLE="$ROOT/android/app/src/main/res/drawable"
 
-HTML_FILE="${HTML_FILE:-index.html}"
+BUILD_TARGET="${BUILD_TARGET:-index.html}"
 EXTRA_ASSETS_DIR="${EXTRA_ASSETS_DIR:-}"
 ICON_FILE="${ICON_FILE:-}"
-
-if [[ ! -f "$ROOT/$HTML_FILE" ]]; then
-  echo "::error::找不到 HTML 文件: $HTML_FILE"
-  exit 1
-fi
 
 rm -rf "$ASSETS_DIR"
 mkdir -p "$ASSETS_DIR"
 
-# 主页面统一命名为 index.html
-cp "$ROOT/$HTML_FILE" "$ASSETS_DIR/index.html"
-
-# 可选：合并额外静态资源
-if [[ -n "$EXTRA_ASSETS_DIR" ]]; then
-  if [[ ! -d "$ROOT/$EXTRA_ASSETS_DIR" ]]; then
-    echo "::error::找不到资源目录: $EXTRA_ASSETS_DIR"
+# ---------- 判定模式：URL 或 HTML 文件 ----------
+if [[ "$BUILD_TARGET" =~ ^https?:// ]]; then
+  echo "::notice::URL 模式：$BUILD_TARGET"
+  if [[ -n "$EXTRA_ASSETS_DIR" ]]; then
+    echo "::warning::URL 模式下 assets_dir 将被忽略"
+  fi
+  # Java 侧读取此文件决定初始 URL
+  printf '%s' "$BUILD_TARGET" > "$ASSETS_DIR/start_url.txt"
+else
+  echo "::notice::HTML 文件模式：$BUILD_TARGET"
+  if [[ ! -f "$ROOT/$BUILD_TARGET" ]]; then
+    echo "::error::找不到 HTML 文件: $BUILD_TARGET"
     exit 1
   fi
-  cp -R "$ROOT/$EXTRA_ASSETS_DIR"/. "$ASSETS_DIR"/
-  cp "$ROOT/$HTML_FILE" "$ASSETS_DIR/index.html"
+  cp "$ROOT/$BUILD_TARGET" "$ASSETS_DIR/index.html"
+
+  if [[ -n "$EXTRA_ASSETS_DIR" ]]; then
+    if [[ ! -d "$ROOT/$EXTRA_ASSETS_DIR" ]]; then
+      echo "::error::找不到资源目录: $EXTRA_ASSETS_DIR"
+      exit 1
+    fi
+    cp -R "$ROOT/$EXTRA_ASSETS_DIR"/. "$ASSETS_DIR"/
+    cp "$ROOT/$BUILD_TARGET" "$ASSETS_DIR/index.html"
+  fi
 fi
 
-# 图标（可选）
+# ---------- 图标（可选） ----------
 if [[ -n "$ICON_FILE" ]]; then
   if [[ ! -f "$ROOT/$ICON_FILE" ]]; then
     echo "::error::找不到图标文件: $ICON_FILE"
