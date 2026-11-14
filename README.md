@@ -16,22 +16,24 @@
 
 ## 使用方式
 
-### 手动触发构建
+进入仓库 **Actions → Build APK → Run workflow**，填写参数后运行。
 
-1. 进入仓库 **Actions → Build APK → Run workflow**；
-2. 填写参数：
+| 参数 | 说明 | 默认值 |
+| --- | --- | --- |
+| `build_target` | **主页来源**：填 HTML 文件路径（如 `index.html`）或 `http(s)://` 开头的 URL | `index.html` |
+| `assets_dir` | 额外静态资源目录（**仅 HTML 文件模式生效**，URL 模式忽略） | 空 |
+| `app_name` | 应用显示名称 | `WebApp` |
+| `package_name` | 应用包名 | `com.example.webapp` |
+| `version_name` | 版本名 | `1.0.0` |
+| `version_code` | 版本号（整数） | `1` |
+| `icon_file` | 图标路径（png/jpg） | 空（系统默认图标） |
 
-   | 参数 | 说明 | 默认值 |
-   | --- | --- | --- |
-   | `html_file` | 作为主页的 HTML 文件路径 | `index.html` |
-   | `assets_dir` | 额外静态资源目录（如 `web/`） | 空 |
-   | `app_name` | 应用显示名称 | `WebApp` |
-   | `package_name` | 应用包名 | `com.example.webapp` |
-   | `version_name` | 版本名 | `1.0.0` |
-   | `version_code` | 版本号（整数） | `1` |
-   | `icon_file` | 图标路径（png/jpg） | 空（系统默认图标） |
+### 构建目标示例
 
-3. 构建完成后，在 **Artifacts** 中下载 `apk-<应用名>-<版本>.zip`，解压即得 APK。
+- **本地 HTML 文件**：`build_target = index.html`
+- **在线网页**：`build_target = https://example.com/app`
+
+构建完成后，在 **Artifacts** 中下载 `apk-<应用名>-<版本>.zip`，解压即得 APK。
 
 
 ## 目录说明
