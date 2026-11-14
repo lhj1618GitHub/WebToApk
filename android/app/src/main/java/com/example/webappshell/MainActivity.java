@@ -58,6 +58,9 @@ public class MainActivity extends Activity {
     private WebViewAssetLoader assetLoader;
     private ValueCallback<Uri[]> filePathCallback;
 
+    /** 由 JS 桥 setNextFileName() 预设，下一次下载触发后即清空（一次性） */
+    private volatile String pendingFileName = null;
+
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -91,7 +94,7 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
-        // 供下载 blob/data URL 使用
+        // ---------- JS 桥：下载 / 自定义文件名 ----------
         webView.addJavascriptInterface(new Bridge(), "AndroidBridge");
 
         // ---------- 内部页面加载 ----------
@@ -133,7 +136,10 @@ public class MainActivity extends Activity {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition,
                                         String mimeType, long contentLength) {
-                handleDownload(url, userAgent, contentDisposition, mimeType);
+                // 优先消费预设文件名（一次性）
+                String custom = pendingFileName;
+                pendingFileName = null;
+                handleDownload(url, userAgent, contentDisposition, mimeType, custom);
             }
         });
 
@@ -196,26 +202,34 @@ public class MainActivity extends Activity {
         return true;
     }
 
-    // ==================== 下载处理 ====================
+    // ==================== 下载分发 ====================
 
-    private void handleDownload(String url, String userAgent,
-                                String contentDisposition, String mimeType) {
+    private void handleDownload(String url, String userAgent, String contentDisposition,
+                                String mimeType, String customFileName) {
         if (url == null) return;
 
         if (url.startsWith("blob:")) {
-            fetchBlobViaJs(url, mimeType);
+            fetchBlobViaJs(url, mimeType, customFileName);
             return;
         }
         if (url.startsWith("data:")) {
-            saveDataUrl(url);
+            saveDataUrl(url, customFileName);
             return;
         }
-        downloadWithDownloadManager(url, userAgent, contentDisposition, mimeType);
+        downloadWithDownloadManager(url, userAgent, contentDisposition, mimeType, customFileName);
     }
 
     private void downloadWithDownloadManager(String url, String userAgent,
-                                             String contentDisposition, String mimeType) {
-        String fileName = URLUtil.guessFileName(url, contentDisposition, mimeType);
+                                             String contentDisposition, String mimeType,
+                                             String customFileName) {
+        String fileName = sanitizeFileName(customFileName);
+        if (fileName == null) {
+            fileName = sanitizeFileName(URLUtil.guessFileName(url, contentDisposition, mimeType));
+        }
+        if (fileName == null) {
+            fileName = buildFileName(mimeType);
+        }
+
         try {
             DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
             if (mimeType != null && !mimeType.isEmpty()) req.setMimeType(mimeType);
@@ -240,8 +254,9 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void fetchBlobViaJs(String blobUrl, String mimeType) {
+    private void fetchBlobViaJs(String blobUrl, String mimeType, String customFileName) {
         String mime = (mimeType == null || mimeType.isEmpty()) ? "" : mimeType;
+        String fname = (customFileName == null) ? "" : customFileName;
         String js = "(function(){"
                 + "var x=new XMLHttpRequest();"
                 + "x.open('GET'," + jsString(blobUrl) + ",true);"
@@ -250,7 +265,8 @@ public class MainActivity extends Activity {
                 + "  var fr=new FileReader();"
                 + "  fr.onloadend=function(){"
                 + "    var s=fr.result;var i=s.indexOf(',');"
-                + "    AndroidBridge.onBlobReady(s.substring(i+1)," + jsString(mime) + ");"
+                + "    AndroidBridge.onBlobReady(s.substring(i+1),"
+                +                    jsString(mime) + "," + jsString(fname) + ");"
                 + "  };"
                 + "  fr.readAsDataURL(x.response);"
                 + "};"
@@ -260,7 +276,7 @@ public class MainActivity extends Activity {
         webView.evaluateJavascript(js, null);
     }
 
-    private void saveDataUrl(String dataUrl) {
+    private void saveDataUrl(String dataUrl, String customFileName) {
         int comma = dataUrl.indexOf(',');
         if (comma < 0) { toast("无效的 data URL"); return; }
         String meta    = dataUrl.substring(5, comma);
@@ -269,11 +285,11 @@ public class MainActivity extends Activity {
 
         try {
             if (meta.contains(";base64")) {
-                saveBytes(Base64.decode(payload, Base64.DEFAULT), mime);
+                saveBytes(Base64.decode(payload, Base64.DEFAULT), mime, customFileName);
             } else {
                 byte[] bytes = URLDecoder.decode(payload, "UTF-8")
                         .getBytes(StandardCharsets.UTF_8);
-                saveBytes(bytes, mime);
+                saveBytes(bytes, mime, customFileName);
             }
         } catch (Exception e) {
             toast("数据解码失败: " + e.getMessage());
@@ -282,8 +298,10 @@ public class MainActivity extends Activity {
 
     // ==================== 保存到下载目录 ====================
 
-    private void saveBytes(byte[] data, String mime) {
-        String name = buildFileName(mime);
+    private void saveBytes(byte[] data, String mime, String customFileName) {
+        String name = sanitizeFileName(customFileName);
+        if (name == null) name = buildFileName(mime);
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             saveViaMediaStore(data, name, mime);
         } else {
@@ -339,21 +357,100 @@ public class MainActivity extends Activity {
         return "webapp_" + stamp + "." + ext;
     }
 
+    /**
+     * 清洗文件名：去除路径分隔符/非法字符/首尾空白与前导点，限制长度。
+     * 空或非法 → 返回 null 让调用方回退到默认命名。
+     */
+    private static String sanitizeFileName(String name) {
+        if (name == null) return null;
+        name = name.trim();
+        if (name.isEmpty()) return null;
+
+        name = name.replace('\\', '_').replace('/', '_');
+        name = name.replaceAll("[<>:\"|?*\\x00-\\x1F]", "_");
+
+        while (name.startsWith(".") || name.startsWith(" ")) {
+            name = name.substring(1);
+        }
+        while (name.endsWith(" ") || name.endsWith(".")) {
+            if (name.isEmpty()) break;
+            name = name.substring(0, name.length() - 1);
+        }
+        if (name.isEmpty()) return null;
+
+        if (name.length() > 180) {
+            int dot = name.lastIndexOf('.');
+            String ext = (dot > 0) ? name.substring(dot) : "";
+            if (ext.length() > 20) ext = "";
+            name = name.substring(0, 180 - ext.length()) + ext;
+        }
+        return name;
+    }
+
     // ==================== JS 桥 ====================
 
     private class Bridge {
+
+        /**
+         * 预设下一次下载的文件名（一次性）。
+         * 适用于 <a download>、blob:、data:、普通 http(s) 等任意触发路径。
+         */
         @JavascriptInterface
-        public void onBlobReady(String base64, String mime) {
-            try {
-                saveBytes(Base64.decode(base64, Base64.DEFAULT), mime);
-            } catch (IllegalArgumentException e) {
-                toast("数据解码失败");
-            }
+        public void setNextFileName(String fileName) {
+            pendingFileName = fileName;
+        }
+
+        /**
+         * 主动下载：适用于 http(s) URL。
+         * @param url      下载地址
+         * @param fileName 期望的文件名，可传 null/"" 走默认推断
+         * @param mimeType MIME 类型，可传 null/"" 由服务端决定
+         */
+        @JavascriptInterface
+        public void download(String url, String fileName, String mimeType) {
+            if (url == null || url.isEmpty()) return;
+            final String fname = (fileName == null || fileName.trim().isEmpty()) ? null : fileName;
+            final String mime  = (mimeType == null || mimeType.trim().isEmpty()) ? null : mimeType;
+            runOnUiThread(() -> handleDownload(url, null, null, mime, fname));
+        }
+
+        /**
+         * 直接保存 Base64 数据为文件（绕过 URL 下载流程）。
+         * @param base64   不含 data: 前缀的纯 Base64 内容
+         * @param fileName 期望的文件名，可传 null/"" 走时间戳默认名
+         * @param mime     MIME 类型，用于推断扩展名
+         */
+        @JavascriptInterface
+        public void saveBase64(String base64, String fileName, String mime) {
+            if (base64 == null) return;
+            final String fname = (fileName == null || fileName.trim().isEmpty()) ? null : fileName;
+            final String fmime = (mime == null || mime.trim().isEmpty()) ? null : mime;
+            runOnUiThread(() -> {
+                try {
+                    saveBytes(Base64.decode(base64, Base64.DEFAULT), fmime, fname);
+                } catch (IllegalArgumentException e) {
+                    toast("数据解码失败");
+                }
+            });
+        }
+
+        // ---- blob: 下载回调（内部使用） ----
+
+        @JavascriptInterface
+        public void onBlobReady(String base64, String mime, String fileName) {
+            final String fname = (fileName == null || fileName.isEmpty()) ? null : fileName;
+            runOnUiThread(() -> {
+                try {
+                    saveBytes(Base64.decode(base64, Base64.DEFAULT), mime, fname);
+                } catch (IllegalArgumentException e) {
+                    toast("数据解码失败");
+                }
+            });
         }
 
         @JavascriptInterface
         public void onBlobError(String message) {
-            toast("下载失败: " + message);
+            runOnUiThread(() -> toast("下载失败: " + message));
         }
     }
 
