@@ -6,7 +6,7 @@ on:
       build_target:
         description: '主页来源：HTML 文件路径（如 index.html）或 http(s) URL'
         required: true
-        default: 'index.html'
+        default: 'sample.html'
       assets_dir:
         description: '可选：额外静态资源目录（仅文件模式生效）'
         required: false
