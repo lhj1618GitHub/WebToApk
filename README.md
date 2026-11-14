@@ -1,6 +1,6 @@
 # HTML → APK 打包模板
 
-把仓库中的任意 HTML 文件打包成 **可安装的 Android 测试 APK**（armv7 / arm64 通用）。
+把仓库中的任意 HTML文件/URL地址 打包成 **可安装的 Android 测试 APK**（armv7 / arm64 通用）。
 
 ## 特性
 
