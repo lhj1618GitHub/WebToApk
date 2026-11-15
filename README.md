@@ -73,6 +73,20 @@ index.html                        示例主页，可替换为自己的页面
 | 通过手机自带的能力下载产生的文件 | `DownloadListener` → `DownloadManager`（http/https）；`blob:` / `data:` 通过 JS 桥 + `MediaStore` 保存到系统「下载」目录 |
 | 浏览内部链接指向的网页内容 | `WebViewAssetLoader` 提供 `https://appassets.androidplatform.net/assets/...` 源，`shouldOverrideUrlLoading` 让 http/https 链接留在 WebView 内，非 http scheme 交给系统处理 |
 
+### 下载文件自定义文件名
+
+页面可通过以下三种方式指定下载文件名（优先级从高到低）：
+
+| 方式 | 用法 | 适用场景 |
+| --- | --- | --- |
+| 主动调用 | `AndroidBridge.download(url, 'name.ext', 'mime/type')` | 已知远程 URL，主动下载 |
+| 直接保存 | `AndroidBridge.saveBase64(b64, 'name.ext', 'mime/type')` | 内容在 JS 内生成，最可控 |
+| 预设名 | `AndroidBridge.setNextFileName('name.ext')` 后触发任意下载 | `<a download>`、`blob:`、`data:`、普通跳转下载 |
+
+未指定时回退到原有逻辑：http(s) 从 `Content-Disposition`/URL 推断，`blob:`/`data:` 使用时间戳名 `webapp_<时间戳>.<ext>`。
+
+所有传入的文件名都会经过清洗：移除 `/`、`\` 及 `<>:"|?*`、控制字符，去掉首尾空白与点，长度超过 180 字符时截断并保留扩展名。非法或清洗后为空则回退到默认命名。
+
 ## 本地调试
 
 ```bash
