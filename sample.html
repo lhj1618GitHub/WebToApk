@@ -13,13 +13,20 @@
             padding: 16px; margin-bottom: 16px; }
     .card h2 { font-size: 1rem; margin: 0 0 12px; }
     button { font: inherit; padding: 10px 16px; border-radius: 8px; cursor: pointer;
-             border: 1px solid rgba(128,128,128,.5); background: rgba(128,128,128,.12); }
+             border: 1px solid rgba(128,128,128,.5); background: rgba(128,128,128,.12);
+             margin: 4px 4px 4px 0; }
     button:active { transform: scale(.97); }
     input[type=file] { display: block; margin-top: 12px; width: 100%; }
+    input[type=text] { width: 100%; padding: 8px; margin-top: 6px; border-radius: 6px;
+                       border: 1px solid rgba(128,128,128,.5);
+                       background: transparent; color: inherit; font: inherit; }
+    label.field { display: block; margin-bottom: 8px; }
     #log { font-family: ui-monospace, Menlo, monospace; font-size: .8rem;
            white-space: pre-wrap; background: rgba(128,128,128,.12);
-           padding: 10px; border-radius: 8px; min-height: 60px; }
+           padding: 10px; border-radius: 8px; min-height: 60px; max-height: 320px;
+           overflow: auto; }
     a { color: #2b7de9; }
+    .hint { font-size: .85rem; opacity: .7; }
   </style>
 </head>
 <body>
@@ -31,13 +38,24 @@
     <div id="fileInfo"></div>
   </div>
 
-  <button id="txt">下载 TXT（保存API）</button>
-  <button id="csv">下载 CSV（预设名 + a[download]）</button>
-  <button id="blob">下载 Blob（预设名）</button>
-  <button id="dataurl">下载 DataURL（预设名）</button>
-  <button id="remote">下载远程文件（AndroidBridge.download）</button>
-  <button id="base64">保存 Base64（AndroidBridge.saveBase64）</button>
-</div>
+  <div class="card">
+    <h2>② 生成并下载文件（支持自定义文件名）</h2>
+    <label class="field">
+      下载文件名（留空则自动命名）：
+      <input id="fileName" type="text" placeholder="例如 report.txt" />
+    </label>
+    <div>
+      <button id="txt">下载 TXT（保存 API）</button>
+      <button id="csv">下载 CSV（预设名 + a[download]）</button>
+      <button id="blob">下载 Blob（预设名）</button>
+      <button id="dataurl">下载 DataURL（预设名）</button>
+    </div>
+    <div>
+      <button id="remote">下载远程文件（AndroidBridge.download）</button>
+      <button id="base64">保存 Base64（AndroidBridge.saveBase64）</button>
+    </div>
+    <p class="hint">留空文件名时：http(s) 按 URL/服务器推断，Blob/DataURL 使用时间戳默认名。</p>
+  </div>
 
   <div class="card">
     <h2>③ 内部链接浏览</h2>
@@ -50,70 +68,129 @@
   <div class="card">
     <h2>日志</h2>
     <div id="log"></div>
+    <button id="clearLog" style="margin-top:8px;">清空日志</button>
   </div>
 
 <script>
-const logEl = document.getElementById('log');
-const log = (m) => { logEl.textContent += m + '\n'; };
+(function () {
+  'use strict';
 
-// ---------- 文件导入 ----------
-document.getElementById('picker').addEventListener('change', async (e) => {
-  const files = Array.from(e.target.files || []);
-  const info = document.getElementById('fileInfo');
-  if (!files.length) { info.textContent = '未选择文件'; return; }
-  for (const f of files) {
-    log(`导入: ${f.name}  ${f.size} bytes  ${f.type || '未知类型'}`);
-    if (f.size < 64 * 1024 && /^text\/|json|javascript/.test(f.type)) {
-      log('  内容预览: ' + (await f.text()).slice(0, 200));
+  const logEl = document.getElementById('log');
+  const log = (m) => {
+    const t = new Date().toLocaleTimeString();
+    logEl.textContent += `[${t}] ${m}\n`;
+    logEl.scrollTop = logEl.scrollHeight;
+  };
+  document.getElementById('clearLog').onclick = () => { logEl.textContent = ''; };
+
+  // ==================== ① 文件导入 ====================
+  document.getElementById('picker').addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files || []);
+    const info = document.getElementById('fileInfo');
+    if (!files.length) { info.textContent = '未选择文件'; return; }
+    for (const f of files) {
+      log(`导入: ${f.name}  ${f.size} bytes  ${f.type || '未知类型'}`);
+      if (f.size < 64 * 1024 && /^text\/|json|javascript/.test(f.type || '')) {
+        try {
+          const txt = await f.text();
+          log('  内容预览: ' + txt.slice(0, 200).replace(/\n/g, ' '));
+        } catch (err) {
+          log('  读取内容失败: ' + err.message);
+        }
+      }
     }
+    info.textContent = `已导入 ${files.length} 个文件`;
+  });
+
+  // ==================== ② 下载 + 自定义文件名 ====================
+  const nameInput = document.getElementById('fileName');
+  const currentName = () => {
+    const v = nameInput.value.trim();
+    return v || null;
+  };
+
+  // 保存 API：Base64 直接交给原生保存，文件名最可控
+  function saveBase64Text(text, name, mime) {
+    if (!window.AndroidBridge) { log('AndroidBridge 不可用（非 APK 环境）'); return; }
+    // btoa 只支持 Latin-1，中文需先转 UTF-8 再转二进制串
+    const bytes = new TextEncoder().encode(text);
+    let bin = '';
+    bytes.forEach(b => { bin += String.fromCharCode(b); });
+    AndroidBridge.saveBase64(btoa(bin), name, mime);
+    log(`saveBase64: ${name}`);
   }
-  info.textContent = `已导入 ${files.length} 个文件`;
-});
 
-// ---------- 下载 ----------
-function downloadBlob(blob, name) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = name;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 30000);
-  log(`已触发下载: ${name}`);
-}
+  document.getElementById('txt').onclick = () => {
+    const name = currentName() || ('hello_' + Date.now() + '.txt');
+    saveBase64Text('Hello from WebApp Shell\n时间: ' + new Date(), name, 'text/plain');
+  };
 
-document.getElementById('txt').onclick = () => {
-  downloadBlob(new Blob(['Hello from WebApp Shell\n时间: ' + new Date()],
-    { type: 'text/plain' }), 'hello.txt');
-};
-document.getElementById('csv').onclick = () => {
-  const rows = [['id','name','value'], [1,'alpha',3.14], [2,'beta',2.72]];
-  const csv = rows.map(r => r.join(',')).join('\n');
-  downloadBlob(new Blob([csv], { type: 'text/csv' }), 'data.csv');
-};
-document.getElementById('html').onclick = () => {
-  const html = '<!doctype html><meta charset="utf-8"><title>T</title><h1>导出的页面</h1>';
-  downloadBlob(new Blob([html], { type: 'text/html' }), 'page.html');
-};
-document.getElementById('blob').onclick = () => {
-  const buf = new Uint8Array(256);
-  for (let i = 0; i < 256; i++) buf[i] = i;
-  downloadBlob(new Blob([buf], { type: 'application/octet-stream' }), 'bytes.bin');
-};
-document.getElementById('dataurl').onclick = () => {
-  const a = document.createElement('a');
-  a.href = 'data:text/plain;base64,' + btoa('data url content');
-  a.download = 'from-dataurl.txt';
-  document.body.appendChild(a); a.click(); a.remove();
-  log('已触发 DataURL 下载');
-};
+  document.getElementById('csv').onclick = () => {
+    const rows = [['id', 'name', 'value'], [1, 'alpha', 3.14], [2, 'beta', 2.72]];
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = currentName() || 'data.csv';
+    if (window.AndroidBridge) AndroidBridge.setNextFileName(a.download);
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    log(`<a download>: ${a.download}`);
+  };
 
-// ---------- JS 路由（模拟内部页面切换） ----------
-function pushRoute() {
-  history.pushState({ page: Date.now() }, '', '#route-' + Date.now());
-  log('内部路由跳转: ' + location.hash);
-  setTimeout(() => history.back(), 600);
-}
+  document.getElementById('blob').onclick = () => {
+    const buf = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) buf[i] = i;
+    const blob = new Blob([buf], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const name = currentName() || ('bytes_' + Date.now() + '.bin');
+    if (window.AndroidBridge) AndroidBridge.setNextFileName(name);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    log(`Blob 下载: ${name}`);
+  };
 
-log('页面已加载，origin = ' + location.origin);
+  document.getElementById('dataurl').onclick = () => {
+    const name = currentName() || ('from-dataurl_' + Date.now() + '.txt');
+    if (window.AndroidBridge) AndroidBridge.setNextFileName(name);
+    const a = document.createElement('a');
+    a.href = 'data:text/plain;base64,' + btoa('data url content');
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    log(`DataURL 下载: ${name}`);
+  };
+
+  document.getElementById('remote').onclick = () => {
+    if (!window.AndroidBridge) { log('AndroidBridge 不可用（非 APK 环境）'); return; }
+    const url = 'https://raw.githubusercontent.com/github/gitignore/main/Android.gitignore';
+    const name = currentName() || 'Android.gitignore';
+    AndroidBridge.download(url, name, 'text/plain');
+    log(`AndroidBridge.download: ${name}`);
+  };
+
+  document.getElementById('base64').onclick = () => {
+    const name = currentName() || ('manual_' + Date.now() + '.txt');
+    saveBase64Text('Base64 直接保存的示例内容', name, 'text/plain');
+  };
+
+  // ==================== ③ 内部路由 ====================
+  window.pushRoute = function () {
+    const id = 'route-' + Date.now();
+    history.pushState({ page: id }, '', '#' + id);
+    log('内部路由跳转: ' + location.hash);
+    setTimeout(() => history.back(), 600);
+  };
+  window.addEventListener('popstate', (e) => {
+    log('popstate: ' + location.hash);
+  });
+
+  // ==================== 环境信息 ====================
+  log('页面已加载，origin = ' + location.origin);
+  log('AndroidBridge = ' + (window.AndroidBridge ? '可用' : '不可用（浏览器环境）'));
+})();
 </script>
 </body>
 </html>
