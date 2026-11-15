@@ -20,7 +20,7 @@
 
 | 参数 | 说明 | 默认值 |
 | --- | --- | --- |
-| `build_target` | **主页来源**：填 HTML 文件路径（如 `index.html`）或 `http(s)://` 开头的 URL | `index.html` |
+| `build_target` | **主页来源**：填 HTML 文件路径（如 `sample.html`）或 `http(s)://` 开头的 URL | `sample.html` |
 | `assets_dir` | 额外静态资源目录（**仅 HTML 文件模式生效**，URL 模式忽略） | 空 |
 | `app_name` | 应用显示名称 | `WebApp` |
 | `package_name` | 应用包名 | `com.example.webapp` |
@@ -30,7 +30,7 @@
 
 ### 构建目标示例
 
-- **本地 HTML 文件**：`build_target = index.html`
+- **本地 HTML 文件**：`build_target = sample.html`
 - **在线网页**：`build_target = https://example.com/app`
 
 构建完成后，在 **Artifacts** 中下载 `apk-<应用名>-<版本>.zip`，解压即得 APK。
@@ -42,7 +42,7 @@
 .github/workflows/build-apk.yml   CI 工作流
 scripts/prepare-assets.sh         把 HTML/资源/图标搬运到 Android 工程
 android/                          WebView 壳工程（AGP 8.5 + JDK 17）
-index.html                        示例主页，可替换为自己的页面
+sample.html                        示例主页，可替换为自己的页面
 ```
 
 ## 关于签名
@@ -91,7 +91,7 @@ index.html                        示例主页，可替换为自己的页面
 
 ```bash
 export ANDROID_HOME=/path/to/android-sdk
-export HTML_FILE=index.html
+export HTML_FILE=sample.html
 bash scripts/prepare-assets.sh
 cd android && gradle assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
