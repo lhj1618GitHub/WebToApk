@@ -2,6 +2,8 @@
 
 把仓库中的任意 HTML文件/URL地址 打包成 **可安装的 Android 测试 APK**（armv7 / arm64 通用）。
 
+## 推荐开源签名工具 - [篱签](https://github.com/jasper2580/liqian)
+
 ## 特性
 
 | 项目 | 说明 |
