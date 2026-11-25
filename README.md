@@ -22,7 +22,7 @@
 
 | 参数 | 说明 | 默认值 |
 | --- | --- | --- |
-| `build_target` | **主页来源**：填 HTML 文件路径（如 `sample.html`）或 `http(s)://` 开头的 URL | `sample.html` |
+| `build_target` | **主页来源**：填 HTML 文件路径（如 `sample.html`）或 `http(s)://` 开头的 URL | `todo/sample.html` |
 | `assets_dir` | 额外静态资源目录（**仅 HTML 文件模式生效**，URL 模式忽略） | 空 |
 | `app_name` | 应用显示名称 | `WebApp` |
 | `package_name` | 应用包名 | `com.example.webapp` |
